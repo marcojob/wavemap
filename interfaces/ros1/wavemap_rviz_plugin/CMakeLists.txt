@@ -2,12 +2,19 @@
 #       https://github.com/ros-visualization/visualization_tutorials/blob/
 #       noetic-devel/rviz_plugin_tutorials/CMakeLists.txt
 
+set(CMAKE_CXX_STANDARD 11)        # Or 17/20 depending on your needs
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)     # Avoid compiler-specific extensions
+
 cmake_minimum_required(VERSION 3.0.2)
 project(wavemap_rviz_plugin)
 
 # Dependencies
 find_package(catkin REQUIRED
     COMPONENTS rviz wavemap wavemap_msgs wavemap_ros_conversions)
+
+find_package(Threads REQUIRED)
+set(INOTIFY_LIBRARIES Threads::Threads)
 
 # Setup catkin package
 catkin_package(CATKIN_DEPENDS
@@ -56,7 +63,7 @@ add_library(${PROJECT_NAME}
     ${QT_MOC})
 set_wavemap_target_properties(${PROJECT_NAME})
 target_link_libraries(${PROJECT_NAME} PUBLIC
-    ${QT_LIBRARIES} ${catkin_LIBRARIES})
+    ${QT_LIBRARIES} ${catkin_LIBRARIES} ${INOTIFY_LIBRARIES})
 
 # Avoid Qt signals and slots defining "emit", "slots", etc.
 # because they can conflict with boost signals.

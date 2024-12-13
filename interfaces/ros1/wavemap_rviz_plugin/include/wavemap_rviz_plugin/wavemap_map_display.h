@@ -5,6 +5,11 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <sys/inotify.h>
+#include <thread>
+#include <atomic>
+#include <chrono>
+#include <filesystem>
 
 #include <rviz/message_filter_display.h>
 #include <rviz/properties/property.h>
@@ -36,7 +41,7 @@ class WavemapMapDisplay : public rviz::MessageFilterDisplay<wavemap_msgs::Map> {
   // Constructor. pluginlib::ClassLoader creates instances by calling
   // the default constructor, so make sure you have one.
   WavemapMapDisplay();
-  ~WavemapMapDisplay() override = default;
+  ~WavemapMapDisplay() override;
 
  protected:
   void onInitialize() override;
@@ -116,6 +121,15 @@ class WavemapMapDisplay : public rviz::MessageFilterDisplay<wavemap_msgs::Map> {
   //       removed from the scene when destructed.
   std::unique_ptr<VoxelVisual> voxel_visual_;
   std::unique_ptr<SliceVisual> slice_visual_;
+
+  std::unique_ptr<std::thread> inotify_thread_;  // Background thread for inotify
+  std::atomic<bool> inotify_running_{false};    // Flag to control the thread
+  int inotify_fd_{-1};                          // File descriptor for inotify
+  int watch_fd_{-1};                            // Watch descriptor for the map file
+  std::filesystem::path watched_filepath_;      // Path of the file being watched
+  std::chrono::time_point<std::chrono::steady_clock> _last_event_time;
+
+  void stopInotifyThread();
 };
 }  // namespace wavemap::rviz_plugin
 

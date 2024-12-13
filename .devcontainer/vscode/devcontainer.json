@@ -6,5 +6,26 @@
   "workspaceFolder": "/home/ci/catkin_ws/src/wavemap",
   "workspaceMount": "source=${localWorkspaceFolder},target=/home/ci/catkin_ws/src/wavemap,type=bind,consistency=cached",
   "containerUser": "ci",
-  "remoteUser": "ci"
+  "remoteUser": "ci",
+  "remoteEnv": {
+    "DISPLAY": "${localEnv:DISPLAY}"
+  },
+  "mounts": [
+    {
+        "source": "${localEnv:HOME}/Downloads",
+        "target": "/home/ci/Downloads",
+        "type": "bind"
+    }
+  ],
+  "runArgs": [
+      "--gpus",
+      "all",
+      "--privileged",
+      "--device=/dev/dri:/dev/dri",
+      "-v",
+      "/tmp/.X11-unix:/tmp/.X11-unix",
+      "-v",
+      "/dev/bus/usb:/dev/bus/usb",
+      "--net=host"
+  ]
 }

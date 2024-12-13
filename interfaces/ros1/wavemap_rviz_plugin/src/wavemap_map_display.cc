@@ -1,8 +1,5 @@
 #include "wavemap_rviz_plugin/wavemap_map_display.h"
 
-#include <memory>
-#include <string>
-
 #include <OGRE/OgreSceneNode.h>
 #include <qfiledialog.h>
 #include <rviz/visualization_manager.h>
@@ -128,6 +125,11 @@ void WavemapMapDisplay::updateSourceModeCallback() {
   // Update the cached source mode value
   const SourceMode old_source_mode = source_mode_;
   source_mode_ = SourceMode(source_mode_property_.getStdString());
+
+  // Stop inotify thread if switching away from file mode
+  if (old_source_mode == SourceMode::kFromFile && source_mode_ != SourceMode::kFromFile) {
+    stopInotifyThread();
+  }
 
   // Show/hide the properties appropriate for mode kFromTopic
   unreliable_property_->setHidden(source_mode_ != SourceMode::kFromTopic);
@@ -293,8 +295,74 @@ void WavemapMapDisplay::loadMapFromDiskCallback() {
   // Update the button property to show the map's name (when not in focus)
   load_map_from_disk_property_.setAtRestValue(filepath.filename());
 
-  // Update the visuals
+  // Stop any existing `inotify` thread
+  stopInotifyThread();
+
+  // Start `inotify` monitoring for this file
+  watched_filepath_ = filepath;
+  inotify_fd_ = inotify_init();
+  if (inotify_fd_ < 0) {
+    ROS_ERROR("Failed to initialize inotify.");
+    return;
+  }
+
+  watch_fd_ = inotify_add_watch(inotify_fd_, filepath.c_str(), IN_MODIFY);
+  if (watch_fd_ < 0) {
+    ROS_ERROR("Failed to add inotify watch for file: %s", filepath.c_str());
+    close(inotify_fd_);
+    inotify_fd_ = -1;
+    return;
+  }
+
+  _last_event_time = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+
+  inotify_running_ = true;
+  inotify_thread_ = std::make_unique<std::thread>([this]() {
+    char buffer[sizeof(inotify_event) + NAME_MAX + 1];
+    while (inotify_running_) {
+      int length = read(inotify_fd_, buffer, sizeof(buffer));
+      if (length > 0) {
+        const auto* event = reinterpret_cast<const inotify_event*>(buffer);
+        if (event->mask & IN_MODIFY) {
+          auto now = std::chrono::steady_clock::now();
+          // if (std::chrono::duration_cast<std::chrono::seconds>(now - _last_event_time).count() >= 1) {
+            _last_event_time = now;
+            ROS_INFO("File modified: %s", watched_filepath_.c_str());
+            // Call updateVisuals on file change
+            loadMapFromDisk(watched_filepath_);
+            updateVisuals(true);
+          // }
+        }
+      }
+    }
+  });
+
+  // Update the visuals initially
   updateVisuals(true);
+}
+
+void WavemapMapDisplay::stopInotifyThread() {
+  if (inotify_running_) {
+    inotify_running_ = false;
+    if (inotify_thread_ && inotify_thread_->joinable()) {
+      inotify_thread_->join();
+    }
+    inotify_thread_.reset();
+  }
+
+  if (watch_fd_ >= 0) {
+    inotify_rm_watch(inotify_fd_, watch_fd_);
+    watch_fd_ = -1;
+  }
+
+  if (inotify_fd_ >= 0) {
+    close(inotify_fd_);
+    inotify_fd_ = -1;
+  }
+}
+
+WavemapMapDisplay::~WavemapMapDisplay() {
+  stopInotifyThread();
 }
 
 std::optional<std::string>
